@@ -1,4 +1,4 @@
-### Chạy lại quy trình Build
+### Run ZAP add-ons
 
 Bây giờ môi trường của bạn đã chuẩn, hãy quay lại giải quyết dứt điểm Add-on nhé:
 
