@@ -1,0 +1,28 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=utf-8">
+<TITLE>
+Postman – 自動化フレームワーク対応
+</TITLE>
+</HEAD>
+<BODY>
+<H1>Postman – 自動化フレームワーク対応</H1>
+このアドオンは自動化フレームワークに対応しています。
+<br><br>
+このアドオンでは、URLまたはローカルファイルから Postman コレクションをインポートできます。
+<br><br>
+変数パラメーターの動作は、<a href="postman.html">こちら</a>で定義されている方法と同様です。
+
+<H2>ジョブ: postman</H2>
+postman ジョブでは、URLまたはファイルから Postman コレクションをインポートできます。
+<pre>
+  - type: postman         # Postman コレクションのインポート
+    parameters:
+      collectionFile:     # 文字列: Postman コレクションを含むローカルファイル。デフォルト: null、コレクションはインポートされません
+      collectionUrl:      # 文字列: Postman コレクションを含むURL。デフォルト: null、コレクションはインポートされません
+      variables:          # 文字列: <code>key1=value1,key2=value2,...</code> の形式でキーと値のペアとしてコンマ区切りで指定された変数リスト。これらの変数は、コレクション内の変数よりも優先されます
+</pre>
+
+</BODY>
+</HTML>
