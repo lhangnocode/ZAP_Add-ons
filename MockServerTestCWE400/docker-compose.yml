@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  cwe400-mock-server:
+    build: .
+    ports:
+      - "8081:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'     # Cấp tối đa 0.5 core CPU
+          memory: 1028M    # Cấp tối đa 128MB RAM
