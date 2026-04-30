@@ -8,5 +8,5 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'     # Cấp tối đa 0.5 core CPU
-          memory: 1028M    # Cấp tối đa 128MB RAM
+          cpus: '4'     
+          memory: 1028M    

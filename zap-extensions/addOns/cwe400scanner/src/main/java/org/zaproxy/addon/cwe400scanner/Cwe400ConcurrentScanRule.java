@@ -26,11 +26,11 @@ public class Cwe400ConcurrentScanRule extends AbstractAppPlugin {
     @Override
     public String getReference() { return "https://owasp.org/Top10/A04_2021-Insecure_Design/"; }
     @Override
-    public String getDescription() { return "Stress tests endpoints using dynamic thread stepping based on system & user limits."; }
+    public String getDescription() { return "Stress tests endpoints checking for high latency, timeouts, and HTTP 500 crashes."; }
     @Override
     public int getCategory() { return Category.SERVER; }
     @Override
-    public String getSolution() { return "Implement rate limiting and optimize resource pool management."; }
+    public String getSolution() { return "Implement rate limiting, optimize resource pools, and handle timeouts gracefully."; }
 
     @Override
     public void scan() {
@@ -53,7 +53,10 @@ public class Cwe400ConcurrentScanRule extends AbstractAppPlugin {
             sendAndReceive(msg, false, false);
             baselineTime = msg.getTimeElapsedMillis();
             ExtensionCwe400Scanner.log("[INFO] Baseline Response: " + baselineTime + "ms");
-        } catch (Exception e) { return; }
+        } catch (Exception e) { 
+            ExtensionCwe400Scanner.log("[ERROR] Cannot reach target for baseline.");
+            return; 
+        }
 
         int currentThreads = 10; 
         boolean isVulnerable = false;
@@ -76,7 +79,10 @@ public class Cwe400ConcurrentScanRule extends AbstractAppPlugin {
                     try {
                         sendAndReceive(attackMsg, false, false);
                         return new long[] { attackMsg.getResponseHeader().getStatusCode(), attackMsg.getTimeElapsedMillis() };
-                    } catch (Exception e) { return new long[] { 0, 99999 }; }
+                    } catch (Exception e) { 
+                        // Trả về status 0 để báo hiệu lỗi mạng/timeout
+                        return new long[] { 0, 99999 }; 
+                    }
                 });
             }
 
@@ -86,23 +92,47 @@ public class Cwe400ConcurrentScanRule extends AbstractAppPlugin {
                 executor.awaitTermination(30, TimeUnit.SECONDS);
 
                 long maxBatchTime = 0;
+                int count500 = 0;
+                int countTimeout = 0;
+
                 for (Future<long[]> f : results) {
                     long[] res = f.get();
-                    if (res[0] == 429 || res[0] == 503) isRateLimited = true;
-                    if (res[1] > maxBatchTime) maxBatchTime = res[1];
+                    int status = (int) res[0];
+                    long time = res[1];
+
+                    if (status == 429 || status == 503) isRateLimited = true;
+                    if (status == 500) count500++;
+                    if (status == 0) countTimeout++;
+                    
+                    // Chỉ lấy max time của các request thành công (bỏ qua giá trị 99999 ảo)
+                    if (status != 0 && time > maxBatchTime) {
+                        maxBatchTime = time;
+                    }
                 }
 
-                ExtensionCwe400Scanner.log("   [-] Max Response: " + maxBatchTime + "ms");
+                ExtensionCwe400Scanner.log("   [-] Max Response: " + maxBatchTime + "ms | 500s: " + count500 + " | Timeouts: " + countTimeout);
 
                 if (isRateLimited) {
                     ExtensionCwe400Scanner.log("[SAFE] HTTP 429/503 detected. Server has Rate Limiting.");
                     break;
                 }
 
-                if (maxBatchTime >= (baselineTime * LAG_MULTIPLIER) && maxBatchTime > MIN_LAG_THRESHOLD) {
+                // KIỂM TRA 3 TRƯỜNG HỢP GÂY SẬP (Lỗi 500, Timeout, Lag)
+                String vulnerabilityReason = null;
+                
+                if (count500 > 0) {
+                    vulnerabilityReason = "Server crashed and returned HTTP 500 Internal Server Error (" + count500 + " times).";
+                } else if (countTimeout > 0) {
+                    vulnerabilityReason = "Server stopped responding/Timed out (" + countTimeout + " dropped requests).";
+                } else if (maxBatchTime >= (baselineTime * LAG_MULTIPLIER) && maxBatchTime > MIN_LAG_THRESHOLD) {
+                    vulnerabilityReason = "Response time degraded massively to " + maxBatchTime + "ms.";
+                }
+
+                if (vulnerabilityReason != null) {
                     isVulnerable = true;
                     ExtensionCwe400Scanner.log("[VULNERABLE] Breaking point found at " + currentThreads + " threads!");
-                    raiseCweAlert(currentThreads, maxBatchTime, baselineTime);
+                    ExtensionCwe400Scanner.log("   [!] Reason: " + vulnerabilityReason);
+                    raiseCweAlert(currentThreads, maxBatchTime, baselineTime, vulnerabilityReason);
                     break;
                 }
 
@@ -114,14 +144,14 @@ public class Cwe400ConcurrentScanRule extends AbstractAppPlugin {
         ExtensionCwe400Scanner.log("[END] Scan completed.");
     }
 
-    private void raiseCweAlert(int threads, long lag, long baseline) {
+    private void raiseCweAlert(int threads, long lag, long baseline, String reason) {
         try {
             newAlert()
                 .setRisk(Alert.RISK_HIGH)
                 .setConfidence(Alert.CONFIDENCE_MEDIUM)
-                .setName("CWE-400: Resource Exhaustion via Concurrent Requests")
-                .setDescription("The server's response time degraded significantly under concurrent load.")
-                .setOtherInfo("Baseline: " + baseline + "ms\nBreaking Point: " + threads + " threads\nMax Response: " + lag + "ms")
+                .setName("CWE-400: Uncontrolled Resource Consumption")
+                .setDescription("The server failed to handle concurrent load safely. Reason: " + reason)
+                .setOtherInfo("Baseline Time: " + baseline + "ms\nBreaking Point: " + threads + " threads\nMax Recorded Lag: " + lag + "ms\nDetail: " + reason)
                 .setMessage(getBaseMsg())
                 .raise();
         } catch (Exception e) {}
